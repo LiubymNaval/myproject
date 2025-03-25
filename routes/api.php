@@ -4,6 +4,7 @@ use App\Http\Controllers\BookSacController;
 use App\Http\Controllers\BookRestController;
 use App\Http\Controllers\BookApiController;
 use App\Http\Controllers\NoteController;
+use App\Http\Controllers\CategoryController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/books/{id}/borrow', [BookRpcController::class, 'borrowBook']);
@@ -21,3 +22,7 @@ Route::get('/search-notes', [NoteController::class, 'searchNotes']);
 Route::get('/users-with-notes-count', [NoteController::class, 'usersWithNotesCount']);
 Route::get('/longest-and-shortest-note', [NoteController::class, 'longestAndShortestNote']);
 Route::get('/notes-last-week', [NoteController::class, 'notesLastWeek']);
+
+Route::apiResource('/categories', CategoryController::class);
+
+Route::get('/categories/name/{name}', [CategoryController::class, 'getByName']); 
