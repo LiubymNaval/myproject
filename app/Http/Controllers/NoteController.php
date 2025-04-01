@@ -5,6 +5,7 @@ use App\Models\Note;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 class NoteController extends Controller
 {
     /**
@@ -19,7 +20,8 @@ class NoteController extends Controller
 //    }
     public function index()
     {
-        $notes = Note::orderBy('updated_at', 'desc')->get();
+        // $notes = Note::orderBy('updated_at', 'desc')->get();
+        $notes = Note::with(['user', 'categories'])->orderBy('updated_at', 'desc')->get();
         return response()->json($notes);
     }
 
@@ -44,18 +46,57 @@ class NoteController extends Controller
     //    }
     
         public function store(Request $request)
-        {
-            $note = Note::create([
-                'user_id' => $request->user_id,
-                'title' => $request->title,
-                'body' => $request->body
-            ]);
-    
-            if ($note) {
-                return response()->json(['message' => 'Poznámka bola vytvorená'], Response::HTTP_CREATED);
-            } else {
-                return response()->json(['message' => 'Poznámka nebola vytvorená'], Response::HTTP_FORBIDDEN);
+        {  
+            try { 
+                $validated = $request->validate([
+                    'user_id' => 'required|exists:users,id',
+                    'title' => 'required|string|min:5|max:255',
+                    'body' => 'required|string',
+                    'categories' => 'array|max:3',
+                    'categories.*' => 'exists:categories, id' 
+                ]);
+            
+                $note = Note::create([
+                    'user_id' => $validated['user_id'],
+                    'title' => $validated ['title'],
+                    'body' => $validated ['body']
+                ]);
+
+                if (!empty($validated ['categories'])) {
+                    $note->categories()->sync($validated ['categories']);
+                }
+                
+                $note->load(['user', 'categories']);
+                
+                return response()->json([
+                    'message' => 'Poznámka bola vytvorená',
+                    'note' => $note
+                ], Response:: HTTP_CREATED);
+            } catch (ValidationException $e) {  
+                return response()->json([
+                    'message' => 'Chyba pri validácii poznámky',
+                    'errors' => $e->errors() 
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+                
+            } catch (\Exception $e) {
+                return response()->json([
+                    'message' => 'Neočakávaná chyba pri vytváraní poznámky',
+                    'error' => $e->getMessage()
+                ], Response::HTTP_INTERNAL_SERVER_ERROR);
             }
+
+
+            // $note = Note::create([
+            //     'user_id' => $request->user_id,
+            //     'title' => $request->title,
+            //     'body' => $request->body
+            // ]);
+    
+            // if ($note) {
+            //     return response()->json(['message' => 'Poznámka bola vytvorená'], Response::HTTP_CREATED);
+            // } else {
+            //     return response()->json(['message' => 'Poznámka nebola vytvorená'], Response::HTTP_FORBIDDEN);
+            // }
         }
     
 
@@ -93,47 +134,88 @@ class NoteController extends Controller
 //        }
 //    }
 
-public function update(Request $request, $id)
-{
-    $note = Note::find($id);
+    public function update(Request $request, $id)
+    {
 
-    if (!$note) {
-        return response()->json(['message' => 'Poznámka nebola nájdená'], Response::HTTP_NOT_FOUND);
+        try{
+            $validated = $request->validate([
+                'title' => 'required|string|min:5|max:255',
+                'body' => 'required|string',
+                'categories' => 'array|max:3',
+                'categories.*' => 'exists:categories, id' 
+            ]);
+
+            $note = Note::find($id);
+
+            if(!$note){
+                return response()->json(['message'=>'Poznámka nebola nájdená'],Response::HTTP_NOT_FOUND);
+            }
+
+            $note->update($validated);
+
+            if(isset($validated['categories'])){
+                $note->categories()->sync($validated['categories']);
+            }
+
+            $note->load(['user','categories']);
+
+            return response()->json([
+                'message' => 'Poznámka bola aktualizovaná',
+                'note' => $note
+            ], Response:: HTTP_OK);
+        }  catch (ValidationException $e) {  
+            return response()->json([
+                'message' => 'Chyba pri validácii poznámky',
+                'errors' => $e->errors() 
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Neočakávaná chyba pri aktualizacii poznámky',
+                'error' => $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+
+        // $note = Note::find($id);
+
+        // if (!$note) {
+        //     return response()->json(['message' => 'Poznámka nebola nájdená'], Response::HTTP_NOT_FOUND);
+        // }
+
+        // $note->update([
+        //     'title' => $request->title,
+        //     'body' => $request->body
+        // ]);
+
+        // return response()->json(['message' => 'Poznámka bola aktualizovaná', 'note' => $note]);
     }
-
-    $note->update([
-        'title' => $request->title,
-        'body' => $request->body
-    ]);
-
-    return response()->json(['message' => 'Poznámka bola aktualizovaná', 'note' => $note]);
-}
 
     /**
      * Remove the specified resource from storage.
      */
-   //    public function destroy($id)
-//    {
-//        $deleted = DB::table('notes')->where('id', $id)->delete();
-//
-//        if ($deleted) {
-//            return response()->json(['message' => 'Poznámka bola vymazaná'], Response::HTTP_OK);
-//        } else {
-//            return response()->json(['message' => 'Poznámka nebola nájdená'], Response::HTTP_NOT_FOUND);
-//        }
-//    }
+    //    public function destroy($id)
+    //    {
+    //        $deleted = DB::table('notes')->where('id', $id)->delete();
+    //
+    //        if ($deleted) {
+    //            return response()->json(['message' => 'Poznámka bola vymazaná'], Response::HTTP_OK);
+    //        } else {
+    //            return response()->json(['message' => 'Poznámka nebola nájdená'], Response::HTTP_NOT_FOUND);
+    //        }
+    //    }
 
-public function destroy($id)
-{
-    $note = Note::find($id);
+    public function destroy($id)
+    {
+        $note = Note::find($id);
 
-    if (!$note) {
-        return response()->json(['message' => 'Poznámka nebola nájdená'], Response::HTTP_NOT_FOUND);
+        if (!$note) {
+         return response()->json(['message' => 'Poznámka nebola nájdená'], Response::HTTP_NOT_FOUND);
+        }
+
+        $note->delete();
+        return response()->json(['message' => 'Poznámka bola vymazaná']);
     }
-
-    $note->delete();
-    return response()->json(['message' => 'Poznámka bola vymazaná']);
-}
      /**
      * Vlastné metódy
      */
@@ -185,22 +267,22 @@ public function destroy($id)
 //        return response()->json($notes);
 //    }
 
-public function searchNotes(Request $request)
-{
-    $query = $request->query('q');
+    public function searchNotes(Request $request)
+    {
+        $query = $request->query('q');
 
-    if (empty($query)) {
-        return response()->json(['message' => 'Musíte zadať dopyt na vyhľadávanie'], Response::HTTP_BAD_REQUEST);
+        if (empty($query)) {
+            return response()->json(['message' => 'Musíte zadať dopyt na vyhľadávanie'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $notes = Note::searchByTitleOrBody($query); // Použitie vlastnej metódy z modelu
+
+        if ($notes->isEmpty()) {
+            return response()->json(['message' => 'Žiadne poznámky sa nenašli'], Response::HTTP_NOT_FOUND);
+        }
+
+        return response()->json($notes);
     }
-
-    $notes = Note::searchByTitleOrBody($query); // Použitie vlastnej metódy z modelu
-
-    if ($notes->isEmpty()) {
-        return response()->json(['message' => 'Žiadne poznámky sa nenašli'], Response::HTTP_NOT_FOUND);
-    }
-
-    return response()->json($notes);
-}
     //Počet poznámok podľa používateľa
     public function usersWithNotesCount()
     {
